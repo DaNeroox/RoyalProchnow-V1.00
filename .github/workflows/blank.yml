@@ -1,36 +1,70 @@
-# This is a basic workflow to help you get started with Actions
+name: APK bauen
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
-jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+permissions:
+  contents: write
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
+jobs:
+  build:
+    runs-on: ubuntu-latest
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Projekt vorbereiten
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          mkdir -p www
+          if ls *.zip >/dev/null 2>&1; then
+            unzip -o *.zip -d entpackt
+            cp -r entpackt/*/www/. www/
+          else
+            cp "$(ls *.html | head -n 1)" www/index.html
+          fi
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap init "Prochnow Royal" de.prochnow.royal --web-dir=www
+          npx cap add android
+          npx cap sync android
+
+      - name: App-Symbol einbauen
+        run: |
+          command -v convert >/dev/null || sudo apt-get install -y imagemagick
+          ICON=$(ls icon-only*.png 2>/dev/null | head -n 1)
+          if [ -z "$ICON" ]; then
+            echo "::warning::icon-only.png wurde im Repository nicht gefunden"
+            exit 0
+          fi
+          RES=android/app/src/main/res
+          for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            dir=${d%%:*}
+            size=${d##*:}
+            mkdir -p $RES/mipmap-$dir
+            convert "$ICON" -resize ${size}x${size} $RES/mipmap-$dir/ic_launcher.png
+            cp $RES/mipmap-$dir/ic_launcher.png $RES/mipmap-$dir/ic_launcher_round.png
+          done
+          rm -f $RES/mipmap-anydpi-v26/ic_launcher.xml $RES/mipmap-anydpi-v26/ic_launcher_round.xml
+          echo "Symbol eingebaut aus $ICON"
+          ls -R $RES | grep -i launcher
+
+      - name: APK bauen
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Release mit APK erstellen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk Prochnow-Royal.apk
+          gh release create "apk-${{ github.run_number }}" Prochnow-Royal.apk --title "Prochnow Royal APK ${{ github.run_number }}" --notes "Debug-APK zum Installieren auf Android."
