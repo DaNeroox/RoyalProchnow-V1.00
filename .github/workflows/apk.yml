@@ -30,12 +30,25 @@ jobs:
           else
             cp "$(ls *.html | head -n 1)" www/index.html
           fi
-          ls -la www
           npm init -y
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap init "Prochnow Royal" de.prochnow.royal --web-dir=www
           npx cap add android
-          npx cap sync android
+
+      - name: App-Symbol erzeugen
+        continue-on-error: true
+        run: |
+          if [ -f icon-only.png ]; then
+            mkdir -p assets
+            cp icon-only.png assets/icon-only.png
+            [ -f icon-foreground.png ] && cp icon-foreground.png assets/icon-foreground.png
+            [ -f icon-background.png ] && cp icon-background.png assets/icon-background.png
+            npm install --save-dev @capacitor/assets
+            npx capacitor-assets generate --android
+          fi
+
+      - name: Android-Projekt synchronisieren
+        run: npx cap sync android
 
       - name: APK bauen
         working-directory: android
