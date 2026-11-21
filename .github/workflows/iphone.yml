@@ -1,0 +1,57 @@
+name: iPhone-Version veroeffentlichen
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Spiel vorbereiten
+        run: |
+          mkdir -p site
+          if ls *.zip >/dev/null 2>&1; then
+            unzip -o "$(ls *.zip | head -n 1)" -d entpackt
+            cp -r entpackt/*/www/. site/
+          else
+            cp "$(ls *.html | head -n 1)" site/index.html
+          fi
+          touch site/.nojekyll
+
+      - name: App-Symbol einbauen
+        run: |
+          ICON=$(ls icon-only*.png 2>/dev/null | head -n 1)
+          if [ -z "$ICON" ]; then
+            echo "Kein icon-only.png gefunden - Standard-Symbol bleibt"
+            exit 0
+          fi
+          command -v convert >/dev/null || (sudo apt-get update && sudo apt-get install -y imagemagick)
+          mkdir -p site/icons
+          convert "$ICON" -resize 180x180 site/icons/apple-touch-icon.png
+          convert "$ICON" -resize 192x192 site/icons/icon-192.png
+          convert "$ICON" -resize 512x512 site/icons/icon-512.png
+          convert "$ICON" -resize 512x512 site/icons/icon-maskable-512.png
+          echo "Symbol eingebaut aus $ICON"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
