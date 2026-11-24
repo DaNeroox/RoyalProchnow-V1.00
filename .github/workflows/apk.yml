@@ -33,22 +33,34 @@ jobs:
           npm init -y
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap init "Prochnow Royal" de.prochnow.royal --web-dir=www
-          npx cap add android
-
-      - name: App-Symbol erzeugen
-        continue-on-error: true
-        run: |
-          if [ -f icon-only.png ]; then
-            mkdir -p assets
-            cp icon-only.png assets/icon-only.png
-            [ -f icon-foreground.png ] && cp icon-foreground.png assets/icon-foreground.png
-            [ -f icon-background.png ] && cp icon-background.png assets/icon-background.png
-            npm install --save-dev @capacitor/assets
-            npx capacitor-assets generate --android
+          # App laedt immer die aktuelle Online-Version (automatische Updates)
+          rm -f capacitor.config.ts
+          if [ -f entpackt/*/capacitor.config.json ]; then
+            cp entpackt/*/capacitor.config.json capacitor.config.json
           fi
+          cat capacitor.config.json
+          npx cap add android
+          npx cap sync android
 
-      - name: Android-Projekt synchronisieren
-        run: npx cap sync android
+      - name: App-Symbol einbauen
+        run: |
+          command -v convert >/dev/null || sudo apt-get install -y imagemagick
+          ICON=$(ls icon-only*.png 2>/dev/null | head -n 1)
+          if [ -z "$ICON" ]; then
+            echo "::warning::icon-only.png wurde im Repository nicht gefunden"
+            exit 0
+          fi
+          RES=android/app/src/main/res
+          for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            dir=${d%%:*}
+            size=${d##*:}
+            mkdir -p $RES/mipmap-$dir
+            convert "$ICON" -resize ${size}x${size} $RES/mipmap-$dir/ic_launcher.png
+            cp $RES/mipmap-$dir/ic_launcher.png $RES/mipmap-$dir/ic_launcher_round.png
+          done
+          rm -f $RES/mipmap-anydpi-v26/ic_launcher.xml $RES/mipmap-anydpi-v26/ic_launcher_round.xml
+          echo "Symbol eingebaut aus $ICON"
+          ls -R $RES | grep -i launcher
 
       - name: APK bauen
         working-directory: android
@@ -61,4 +73,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk Prochnow-Royal.apk
-          gh release create "apk-${{ github.run_number }}" Prochnow-Royal.apk --title "Prochnow Royal APK ${{ github.run_number }}" --notes "Debug-APK zum Installieren auf Android."
+          gh release create "apk-${{ github.run_number }}" Prochnow-Royal.apk --title "Prochnow Royal APK ${{ github.run_number }}" --notes "Prochnow Royal fuer Android. Die App laedt automatisch immer die neueste Spielversion."

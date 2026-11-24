@@ -1,7 +1,14 @@
-name: iPhone-Version veroeffentlichen
+name: Spiel veroeffentlichen (Updates)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '*.zip'
+      - '*.html'
+      - 'icon-only*.png'
+      - '.github/workflows/iphone.yml'
 
 permissions:
   contents: read
